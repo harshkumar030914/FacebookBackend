@@ -1,0 +1,20 @@
+db.collection.findOneAndUpdate(
+  { _id: ObjectId("6442b5b2b4e0345e39c26b7b") }, // Query criteria
+  { $set: { "personal_info.firstname": "UpdatedFirstName" } }, // Update operation
+  { returnOriginal: false } // Options
+);
+
+db.collection.findOne({ "personal_info.username": "jane_doe" });
+
+
+db.collection.findById("6442b5b2b4e0345e39c26b7b");
+
+db.collection.findByIdAndDelete("6442b5b2b4e0345e39c26b7b");
+
+db.collection.findOneAndRemove({ "personal_info.username": "jane_doe" });
+
+db.collection.deleteOne({ "personal_info.username": "jane_doe" });
+
+db.collection.deleteMany({ "personal_info.country": "Canada" });
+
+db.collection.insertMany([{ document1 }, { document2 }, { document3 }]);
