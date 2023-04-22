@@ -28,7 +28,8 @@ app.get("/", (req, res) => {
 });
 
 // Mongo Connection
-const CONNECTION = "mongodb://localhost:27017/Facebook";
+//const CONNECTION = "mongodb://localhost:27017/Facebook";
+const CONNECTION = "mongodb+srv://Harsh:HarshKumar1493@cluster0.wdhgsjm.mongodb.net/test";
 mongoose
   .connect(CONNECTION, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => app.listen(PORT, () => console.log(`Listening at Port ${PORT}`)))
