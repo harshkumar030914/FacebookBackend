@@ -16,35 +16,39 @@ const transporter = nodemailer.createTransport({
   port: 587,
   secure: false,
   auth: {
-    user: "your@gmail.com",
-    pass: "apppaas",
+    user: "harshkumar140903@gmail.com",
+    pass: "shqyevwyulfodjnz",
   },
 });
+//CheckUsername
+const Check_UserName = async (req, res) => {
+  const { username } = req.body;
+  const result = await UserModel.findOne({
+    "personal_info.username": username,
+  });
+  if (result) {
+    res.status(200).json({ status: 0, message: "Username Already Taken" });
+  } else {
+    res.status(200).json({ status: 1 });
+  }
+};
 
 // Register User
 const registerUser = async (req, res) => {
   const salt = await bcrypt.genSalt(10);
   const hashedPass = await bcrypt.hash(req.body.user_info.password, salt);
   req.body.user_info.password = hashedPass;
-  const { username } = req.body.personal_info;
-  const oldUser = await UserModel.findOne({
-    presonal_info: {
-      username: username,
-    },
-  });
-  if (oldUser) return res.status(200).json({ message: "User already exists" });
   const User = UserModel(req.body);
-  User.save((err, user) => {
+  User.save((err, result) => {
     if (err) {
       res.status(500).json({ error: err });
     } else {
-      res.json(user);
+      res.status(200).json({ result: result, status: 1 });
     }
   });
 };
 const SendMail = async (req, res) => {
   const { text, status } = req.body;
-  console.log(req.body);
   let user;
   // send mail with defined transport object
   const otp = generateOTP(6);
@@ -71,14 +75,14 @@ const SendMail = async (req, res) => {
     </div>`,
   });
   if (status == 0) {
-    user = await UserModel.findOne( { "personal_info.username": text });
+    user = await UserModel.findOne({ "personal_info.username": text });
   } else {
     user = await UserModel.findOne({ "personal_info.mobile": text });
   }
   if (user == null && status == 0) {
     transporter.sendMail(mailOptions, function (error, info) {
       if (error) {
-        res.json({ message: "Error", error: error });
+        res.json({ message: "Error", error: error, status: 0 });
       } else {
         res.status(200).json({
           message: "Email sent: " + info.response,
@@ -97,31 +101,32 @@ const SendMail = async (req, res) => {
 // Get User Details
 const LoginUser = async (req, res) => {
   const { logincredentail, password, status } = req.body;
-  try {
-    let user;
-    if (status == 0) {
-      user = await UserModel.findOne({ email: logincredentail });
+  let user;
+  if (status == 0) {
+    user = await UserModel.findOne({
+      "personal_info.email": logincredentail,
+    });
+  } else {
+    user = await UserModel.findOne({
+      "personal_info.mobile": logincredentail,
+    });
+  }
+  if (user) {
+    const validity = await bcrypt.compare(password, user.user_info.password);
+    if (validity) {
+      res
+        .status(200)
+        .json({ status: 1, message: "Success", user_id: user._id });
     } else {
-      user = await UserModel.findOne({ mobile: logincredentail });
+      res.status(200).json({ status: 0, message: "Invalid Password" });
     }
-    if (user) {
-      const validity = await bcrypt.compare(password, user.password);
-      if (validity) {
-        res
-          .status(200)
-          .json({ status: 1, message: "Success", user_id: user._id });
-      } else {
-        res.status(200).json({ status: 0, message: "Invalid Password" });
-      }
-    } else {
-      res.status(200).json({ status: 0, message: "Invalid Credentials" });
-    }
-  } catch (error) {
-    res.status(500).json(error);
+  } else {
+    res.status(200).json({ status: 0, message: "Invalid Credentials" });
   }
 };
 module.exports = {
   registerUser,
   LoginUser,
   SendMail,
+  Check_UserName,
 };
