@@ -6,8 +6,8 @@ const RequestList = new mongoose.Schema(
       required: true,
     },
     receiver_id: { type: mongoose.Schema.ObjectId, required: true },
-    status: { type: Number, default: 0 },
-    //status : 0:Sent,1:Accept,2LReject
+    status: { type: Number, default: 1 },
+    //status : 1:Sent,2:Accept,3:Reject
   },
   { timestamps: true }
 );

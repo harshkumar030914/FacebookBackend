@@ -26,6 +26,7 @@ const Forgot_Password = async (req, res) => {
 //Send Request
 const Send_Request = async (req, res) => {
   const { sender_id, receiver_id } = req.body;
+  console.log(req.body);
   const request = new RequestModel({
     sender_id: sender_id,
     receiver_id: receiver_id,
@@ -36,13 +37,15 @@ const Send_Request = async (req, res) => {
     } else {
       const newFriend = {
         user_id: receiver_id,
-        status: 0,
+        status: 1,
       };
       const updatedUser = await UserModel.updateOne(
         { _id: mongoose.Types.ObjectId(sender_id) },
         { $push: { "user_info.friends": newFriend } }
       );
-      if (updatedUser) res.status(200).json({ message: "Request Send" });
+      console.log(updatedUser);
+      if (updatedUser)
+        res.status(200).json({ message: "Request Send", up: updatedUser });
       else res.status(200).json({ message: "Some error Occurred" });
     }
   });
@@ -63,7 +66,7 @@ const Action_On_Request = async (req, res) => {
   if (result) {
     const newFriend = {
       user_id: sender_id,
-      status: 1,
+      status: status,
     };
     const updatedUser = await UserModel.updateOne(
       { _id: mongoose.Types.ObjectId(user_id) },
@@ -91,7 +94,12 @@ const Action_On_Request = async (req, res) => {
 const Get_RequestList = async (req, res) => {
   const { user_id } = req.body;
   const result = await RequestModel.aggregate([
-    { $match: { receiver_id: mongoose.Types.ObjectId(user_id) } },
+    {
+      $match: {
+        receiver_id: mongoose.Types.ObjectId(user_id),
+        status: 1,
+      },
+    },
     { $project: { _id: 0, sender_id: 1, createdAt: 1 } },
     {
       $lookup: {
@@ -99,6 +107,16 @@ const Get_RequestList = async (req, res) => {
         localField: "sender_id",
         foreignField: "_id",
         as: "users",
+      },
+    },
+    {
+      $project: {
+        "users._id": 1,
+        "users.personal_info.username": 1,
+        "users.personal_info.firstname": 1,
+        "users.personal_info.lastname": 1,
+        "users.user_info.profilePicture": 1,
+        timestamp: "$createdAt",
       },
     },
   ]);
@@ -111,9 +129,10 @@ const Get_All_Users = async (req, res) => {
     const result = await UserModel.find(
       {},
       {
+        _id: 1,
         "personal_info.firstname": 1,
         "personal_info.lastname": 1,
-        _id: 1,
+        "personal_info.username": 1,
         "user_info.profilePicture": 1,
       }
     );
@@ -127,47 +146,105 @@ const Get_All_Users = async (req, res) => {
 //Search User
 const Search_User = async (req, res) => {
   const { query, user_id } = req.body;
-  if (query.length > 0) {
+  if (query) {
     const results = await UserModel.aggregate([
       {
         $match: {
-          "personal_info.username": { $regex: query, $options: "i" },
+          "personal_info.username": {
+            $regex: query,
+            $options: "i",
+          },
+          _id: {
+            $ne: mongoose.Types.ObjectId(user_id),
+          },
         },
       },
       {
         $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "user",
+          from: "requestlists",
+          let: { user_id: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ["$sender_id", "$$user_id"] },
+                    { $eq: ["$receiver_id", "$$user_id"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "friend_status",
         },
       },
       {
-        $unwind: "$user",
-      },
-      {
         $project: {
-          "user._id": 1,
-          "user.personal_info.username": 1,
-          "user.user_info.profilePicture": 1,
-          friend: {
-            $cond: [
-              { $in: [user_id, "$user.user_info.friends.user_id"] },
-              {
+          "personal_info.username": 1,
+          "personal_info.firstname": 1,
+          "personal_info.lastname": 1,
+          "user_info.profilePicture": 1,
+          friends: {
+            $cond: {
+              if: { $gt: [{ $size: "$friend_status" }, 0] },
+              then: {
                 $arrayElemAt: [
                   {
                     $filter: {
-                      input: "$user.user_info.friends",
+                      input: "$friend_status",
                       as: "friend",
-                      cond: { $eq: ["$$friend.user_id", user_id] },
+                      cond: {
+                        $or: [
+                          {
+                            $eq: [
+                              "$$friend.sender_id",
+                              mongoose.Types.ObjectId(user_id),
+                            ],
+                          },
+                          {
+                            $eq: [
+                              "$$friend.receiver_id",
+                              mongoose.Types.ObjectId(user_id),
+                            ],
+                          },
+                        ],
+                      },
                     },
                   },
                   0,
                 ],
               },
-              -1,
+              else: 0,
+            },
+          },
+          send_by: {
+            $cond: [
+              {
+                $in: [
+                  mongoose.Types.ObjectId(user_id),
+                  "$friend_status.sender_id",
+                ],
+              },
+              1,
+              0,
             ],
           },
+        },
+      },
+      {
+        $project: {
+          "personal_info.username": 1,
+          "personal_info.firstname": 1,
+          "personal_info.lastname": 1,
+          "user_info.profilePicture": 1,
+          friends: {
+            $cond: {
+              if: { $ifNull: ["$friends", 0] },
+              then: "$friends.status",
+              else: 0,
+            },
+          },
+          send_by: 1,
         },
       },
     ]);
@@ -178,6 +255,46 @@ const Search_User = async (req, res) => {
   }
 };
 
+const Get_users_friends = async (req, res) => {
+  const { user_id } = req.body;
+  const ObjectId = mongoose.Types.ObjectId;
+  const results = await UserModel.aggregate([
+    {
+      $match: {
+        _id: ObjectId(user_id),
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "user_info.friends.user_id",
+        foreignField: "_id",
+        as: "friend_info",
+      },
+    },
+    {
+      $unwind: "$friend_info", // flatten the array
+    },
+    {
+      $match: { "friend_info.user_info.friends.status": "2" }, // filter based on friend's status
+    },
+    {
+      $replaceRoot: { newRoot: "$friend_info" }, // replace the root with friend_info document
+    },
+    {
+      $project: {
+        _id: 1,
+        "personal_info.username": 1,
+        "personal_info.firstname": 1,
+        "personal_info.lastname": 1,
+        "user_info.profilePicture": 1,
+      },
+    },
+  ]);
+  if (results.length > 0) res.status(200).json({ results: results });
+  else res.status(200).json({ message: "no user found", status: 0 });
+};
+
 module.exports = {
   Get_User_Detail,
   Send_Request,
@@ -185,4 +302,5 @@ module.exports = {
   Get_All_Users,
   Search_User,
   Action_On_Request,
+  Get_users_friends,
 };

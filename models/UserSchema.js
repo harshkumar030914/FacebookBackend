@@ -36,9 +36,9 @@ const UserSchema = new mongoose.Schema(
         type: String,
         default: "", // Default value for relationship field
       },
-      country:{
-        type:String,
-      }
+      country: {
+        type: String,
+      },
     },
     //Info User In App
     user_info: {
@@ -59,7 +59,12 @@ const UserSchema = new mongoose.Schema(
         default: "", // Default value for about field
       },
       friends: {
-        type: Array,
+        type: [
+          {
+            user_id: mongoose.Schema.ObjectId,
+            status: String,
+          },
+        ],
         default: [], // Default value for friends field
       },
     },
